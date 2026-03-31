@@ -21,15 +21,15 @@ async def get_overview(tenant_id: uuid.UUID, period: Period, db: AsyncSession, r
 
     # Query materialized view
     # Note: delivery_stats_hourly schema was defined in the migration
-    query = text(f"""
+    query = text("""
         SELECT 
             SUM(total) as total_events,
             SUM(success_count)::float / NULLIF(SUM(total), 0) * 100 as success_rate,
             AVG(p95_latency_ms) as p95_latency_ms
         FROM delivery_stats_hourly
-        WHERE hour >= NOW() - INTERVAL '{interval}'
+        WHERE hour >= NOW() - CAST(:interval AS INTERVAL)
     """)
-    res = await db.execute(query)
+    res = await db.execute(query, {"interval": interval})
     row = res.fetchone()
 
     # Pending count direct from table
@@ -71,17 +71,17 @@ async def get_events_by_type(tenant_id: uuid.UUID, period: Period, app_id: Optio
     # Group by event_type and day
     # We join Event and Delivery or just use deliveries if type is there.
     # The stats view doesn't have event_type. So we query Event table.
-    query = text(f"""
+    query = text("""
         SELECT 
             event_type, 
             COUNT(*) as count, 
             DATE_TRUNC('day', created_at) as date
         FROM events
-        WHERE tenant_id = :tenant_id AND created_at >= NOW() - INTERVAL '{interval}'
+        WHERE tenant_id = :tenant_id AND created_at >= NOW() - CAST(:interval AS INTERVAL)
         GROUP BY event_type, date
         ORDER BY date DESC
     """)
-    res = await db.execute(query, {"tenant_id": tenant_id})
+    res = await db.execute(query, {"tenant_id": tenant_id, "interval": interval})
     result = [
         {"event_type": r.event_type, "count": r.count, "date": r.date.isoformat()}
         for r in res.fetchall()
@@ -100,18 +100,18 @@ async def get_delivery_rates(tenant_id: uuid.UUID, period: Period, granularity: 
     
     trunc = "hour" if granularity == Granularity.HOUR else "day"
 
-    query = text(f"""
+    query = text("""
         SELECT 
-            DATE_TRUNC('{trunc}', hour) as ts,
+            DATE_TRUNC(:trunc, hour) as ts,
             SUM(success_count) as success_count,
             SUM(failure_count) as failure_count,
             SUM(success_count)::float / NULLIF(SUM(total), 0) * 100 as success_rate
         FROM delivery_stats_hourly
-        WHERE hour >= NOW() - INTERVAL '{interval}'
+        WHERE hour >= NOW() - CAST(:interval AS INTERVAL)
         GROUP BY ts
         ORDER BY ts ASC
     """)
-    res = await db.execute(query)
+    res = await db.execute(query, {"trunc": trunc, "interval": interval})
     result = [
         {
             "timestamp": r.ts.isoformat(), 
@@ -136,17 +136,17 @@ async def get_latency(tenant_id: uuid.UUID, period: Period, granularity: Granula
 
     # p99 via percentile_cont simulation on view p95? 
     # Prompt says: calculer p99 via percentile_cont sur deliveries direct (approximation)
-    query = text(f"""
+    query = text("""
         SELECT 
-            DATE_TRUNC('{trunc}', hour) as ts,
+            DATE_TRUNC(:trunc, hour) as ts,
             AVG(avg_latency_ms) as avg_ms,
             AVG(p95_latency_ms) as p95_ms
         FROM delivery_stats_hourly
-        WHERE hour >= NOW() - INTERVAL '{interval}'
+        WHERE hour >= NOW() - CAST(:interval AS INTERVAL)
         GROUP BY ts
         ORDER BY ts ASC
     """)
-    res = await db.execute(query)
+    res = await db.execute(query, {"trunc": trunc, "interval": interval})
     result = []
     for r in res.fetchall():
         result.append({
@@ -167,19 +167,19 @@ async def get_top_subscribers(tenant_id: uuid.UUID, period: Period, limit: int, 
     interval_map = {"1h": "1 hour", "24h": "24 hours", "7d": "7 days", "30d": "30 days"}
     interval = interval_map[period.value]
 
-    query = text(f"""
+    query = text("""
         SELECT 
             s.id, s.name, 
             SUM(v.total) as total,
             SUM(v.success_count)::float / NULLIF(SUM(v.total), 0) * 100 as success_rate
         FROM delivery_stats_hourly v
         JOIN subscribers s ON v.subscriber_id = s.id
-        WHERE s.tenant_id = :tenant_id AND v.hour >= NOW() - INTERVAL '{interval}'
+        WHERE s.tenant_id = :tenant_id AND v.hour >= NOW() - CAST(:interval AS INTERVAL)
         GROUP BY s.id, s.name
         ORDER BY total DESC
         LIMIT :limit
     """)
-    res = await db.execute(query, {"tenant_id": tenant_id, "limit": limit})
+    res = await db.execute(query, {"tenant_id": tenant_id, "interval": interval, "limit": limit})
     result = [
         {
             "subscriber_id": str(r.id),
@@ -208,14 +208,14 @@ async def export_stats(tenant_id: uuid.UUID, period: Period, format: str, sub_id
     await db.commit()
 
     # Query directly from deliveries table for detail
-    sql = text(f"""
+    sql = text("""
         SELECT 
             d.id as delivery_id, e.event_type, s.name as subscriber_name, 
             d.status, d.http_status, d.attempt_number, d.duration_ms, d.delivered_at
         FROM deliveries d
         JOIN events e ON d.event_id = e.id
         JOIN subscribers s ON d.subscriber_id = s.id
-        WHERE e.tenant_id = :tenant_id AND e.created_at >= NOW() - INTERVAL '{interval}'
+        WHERE e.tenant_id = :tenant_id AND e.created_at >= NOW() - CAST(:interval AS INTERVAL)
     """)
     
     if format == "csv":
@@ -227,7 +227,7 @@ async def export_stats(tenant_id: uuid.UUID, period: Period, format: str, sub_id
             output.truncate(0)
             output.seek(0)
             
-            res = await db.stream(sql, {"tenant_id": tenant_id})
+            res = await db.stream(sql, {"tenant_id": tenant_id, "interval": interval})
             async for row in res:
                 writer.writerow([str(row.delivery_id), row.event_type, row.subscriber_name, row.status, row.http_status, row.attempt_number, row.duration_ms, row.delivered_at])
                 yield output.getvalue()
@@ -238,7 +238,7 @@ async def export_stats(tenant_id: uuid.UUID, period: Period, format: str, sub_id
         
     else: # ndjson
         async def generate_json():
-            res = await db.stream(sql, {"tenant_id": tenant_id})
+            res = await db.stream(sql, {"tenant_id": tenant_id, "interval": interval})
             async for row in res:
                 item = {
                     "delivery_id": str(row.delivery_id),

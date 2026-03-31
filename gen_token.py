@@ -3,7 +3,7 @@ from jose import jwt
 import os
 
 # From .env
-SECRET_KEY = "yoursecretkey"
+SECRET_KEY = os.getenv("SECRET_KEY", "yoursecretkey")
 ALGORITHM = "HS256"
 
 def generate_token():

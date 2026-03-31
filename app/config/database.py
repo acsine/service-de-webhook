@@ -1,9 +1,7 @@
 # database.py
 import json
-import urllib.request
-import urllib.parse
+import json
 from collections.abc import AsyncGenerator
-from urllib.error import HTTPError, URLError
 from sqlalchemy.ext.asyncio import create_async_engine
 from sqlalchemy.orm import sessionmaker, declarative_base, Session
 import os
@@ -18,23 +16,27 @@ class Database:
 
     @staticmethod
     async def _load_from_secret_manager() -> None:
+        import httpx
         try:
             aws_session_token = os.environ.get('AWS_SESSION_TOKEN')
-            encoded_parameter_key = urllib.parse.quote(os.environ.get('PARAMETER_STORE_KEY'))
-            req = urllib.request.Request(
-                f'http://localhost:2773/systemsmanager/parameters/get?name={encoded_parameter_key}')
-            req.add_header('X-Aws-Parameters-Secrets-Token', aws_session_token)
-            data = json.loads(urllib.request.urlopen(req).read().decode('utf-8'))
+            parameter_key = os.environ.get('PARAMETER_STORE_KEY')
+            
+            # Using httpx for better security and consistency
+            url = "http://localhost:2773/systemsmanager/parameters/get"
+            headers = {'X-Aws-Parameters-Secrets-Token': aws_session_token}
+            params = {'name': parameter_key}
+            
+            async with httpx.AsyncClient() as client:
+                resp = await client.get(url, headers=headers, params=params)
+                resp.raise_for_status()
+                data = resp.json()
+                
             config = json.loads(data['Parameter']['Value'])
             os.environ.update(config)
-        except HTTPError as e:
-            print("HTTPError:", e.code, e.reason)
-            # Handle HTTP error
-        except URLError as e:
-            print("URLError:", e.reason)
-            # Handle URL error
+        except httpx.HTTPError as e:
+            print("HTTP error occurred:", e)
         except Exception as e:
-            print("An error occurred:", e)
+            print("An error occurred loading secrets:", e)
 
     @staticmethod
     async def init_database() -> None:
