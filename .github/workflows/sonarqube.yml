@@ -47,13 +47,13 @@ jobs:
 
       - name: Run SonarQube Scan
         env:
-          SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
+          SONAR_URL: ${{ secrets.SONAR_URL }}
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
         run: |
           sonar-scanner \
             -Dsonar.projectKey=sygalin-base-python \
             -Dsonar.sources=. \
-            -Dsonar.host.url=$SONAR_HOST_URL \
+            -Dsonar.host.url=$SONAR_URL \
             -Dsonar.login=$SONAR_TOKEN
 
       - name: Check Quality Gate
@@ -61,7 +61,7 @@ jobs:
           echo "Waiting for Quality Gate..."
           for i in {1..10}; do
             sleep 10
-            QUALITY_GATE=$(curl -s -H "Authorization: Bearer $SONAR_TOKEN" "$SONAR_HOST_URL/api/qualitygates/project_status?projectKey=sygalin-base-python")
+            QUALITY_GATE=$(curl -s -H "Authorization: Bearer $SONAR_TOKEN" "$SONAR_URL/api/qualitygates/project_status?projectKey=sygalin-base-python")
             STATUS=$(echo "$QUALITY_GATE" | jq -r '.projectStatus.status')
             echo "Attempt $i: Quality Gate status = $STATUS"
             if [ "$STATUS" != "IN_PROGRESS" ]; then
@@ -71,7 +71,7 @@ jobs:
 
           if [ "$STATUS" == "ERROR" ]; then
             ISSUES=$(curl -s -H "Authorization: Bearer $SONAR_TOKEN" \
-              "$SONAR_HOST_URL/api/issues/search?componentKeys=sygalin-base-python&types=BUG,VULNERABILITY,CODE_SMELL&inNewCodePeriod=true&ps=500")
+              "$SONAR_URL/api/issues/search?componentKeys=sygalin-base-python&types=BUG,VULNERABILITY,CODE_SMELL&inNewCodePeriod=true&ps=500")
 
             TOTAL=$(echo "$ISSUES" | jq -r '.total')
             echo "Total new issues: $TOTAL"
@@ -85,4 +85,4 @@ jobs:
           fi
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
-          SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
+          SONAR_URL: ${{ secrets.SONAR_URL }}
