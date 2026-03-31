@@ -1,6 +1,6 @@
 import uuid
 from typing import List, Dict, Any, Optional
-from fastapi import APIRouter, Depends, status, Query, HTTPException
+from fastapi import APIRouter, Depends, status, Query, HTTPException, BackgroundTasks
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from redis.asyncio import Redis
@@ -16,11 +16,12 @@ router = APIRouter(prefix="/events", tags=["Events"])
 @router.post("", response_model=Dict[str, Any], status_code=status.HTTP_202_ACCEPTED)
 async def publish_event(
     data: schemas.PublishEventRequest,
+    background_tasks: BackgroundTasks,
     producer_app: Application = Depends(get_producer_app),
     db: AsyncSession = Depends(get_db),
     redis: Redis = Depends(get_redis)
 ):
-    return await services.publish_event(data, producer_app, db, redis)
+    return await services.publish_event(data, producer_app, db, redis, background_tasks)
 
 @router.get("", response_model=List[Dict[str, Any]])
 async def list_events(

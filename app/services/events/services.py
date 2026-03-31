@@ -14,7 +14,8 @@ async def publish_event(
     data: PublishEventRequest,
     producer_app: Application,
     db: AsyncSession,
-    redis: Redis
+    redis: Redis,
+    background_tasks = None
 ) -> Dict[str, Any]:
     # 1. Tenant validation
     if str(producer_app.tenant_id) != data.tenant_id:
@@ -54,7 +55,7 @@ async def publish_event(
         await redis.setex(f"idempotency:{data.idempotency_key}", IDEMPOTENCY_TTL, str(event.id))
 
     # 6. Enqueue
-    await enqueue_job("dispatch_event", event_id=str(event.id))
+    await enqueue_job("dispatch_event", background_tasks=background_tasks, event_id=str(event.id))
     
     # 7. Audit Log
     audit = AuditLog(
