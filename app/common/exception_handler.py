@@ -26,7 +26,7 @@ async def validation_exception_handler(request, exc):
         status=http.client.BAD_REQUEST,
         code="BAD_REQUEST",
         error=True,
-        message="Some of the input values are invalid",
+        message="Some of the input values are fd invalid",
         data={"errors": error_details}
     )
     return JSONResponse(
