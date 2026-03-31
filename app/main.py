@@ -36,16 +36,30 @@ from app.common.middleware import SecurityHeadersMiddleware, StructlogMiddleware
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Startup: Initialize Redis
-    await init_redis()
+    print(f"Starting application in {settings.ENV} mode...")
+    try:
+        print("Connecting to Redis...")
+        await init_redis()
+        print("Redis connected successfully.")
+    except Exception as e:
+        print(f"WARNING: Could not connect to Redis at startup: {e}")
     
     # Create tables in development
     if settings.ENV == "development":
-        async with engine.begin() as conn:
-            await conn.run_sync(Base.metadata.create_all)
+        try:
+            print("Running database migrations/create_all...")
+            async with engine.begin() as conn:
+                await conn.run_sync(Base.metadata.create_all)
+            print("Database initialized.")
+        except Exception as e:
+            print(f"ERROR during database initialization: {e}")
             
     yield
     # Shutdown: Close Redis
-    await close_redis()
+    try:
+        await close_redis()
+    except:
+        pass
 
 app = FastAPI(
     title="Centralized Webhook Service",
