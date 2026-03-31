@@ -66,7 +66,7 @@ async def get_top_subscribers(
 @router.get("/export")
 async def export_stats(
     period: Period = Query(Period.P30D),
-    format: str = Query("csv", regex="^(csv|json)$"),
+    format: str = Query("csv", pattern="^(csv|json)$"),
     subscriber_id: str = Query(None),
     db: AsyncSession = Depends(get_db),
     current_user: dict = Depends(get_current_user)

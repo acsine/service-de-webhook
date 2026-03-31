@@ -20,7 +20,7 @@ async def list_audit_logs(
 
 @router.get("/export")
 async def export_audit_logs(
-    format: str = Query("csv", regex="^(csv|json)$"),
+    format: str = Query("csv", pattern="^(csv|json)$"),
     filters: AuditLogFilters = Depends(),
     db: AsyncSession = Depends(get_db),
     current_user: dict = Depends(get_current_user)

@@ -111,6 +111,14 @@ api_v1_router.include_router(team_router)
 app.include_router(oauth_router)
 app.include_router(api_v1_router)
 
+@app.get("/", tags=["Root"])
+async def root():
+    return {
+        "message": "Welcome to Centralized Webhook Service API",
+        "version": "1.0.0",
+        "docs": "/docs"
+    }
+
 @app.get("/health", tags=["Health"])
 async def health_check():
     from app.common.redis import _redis as redis

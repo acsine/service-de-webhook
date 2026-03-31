@@ -26,6 +26,15 @@ class Settings(BaseSettings):
     # Redis Settings
     REDIS_URL: str = "redis://localhost:6379/0"
 
+    @field_validator("REDIS_URL", mode="before")
+    @classmethod
+    def fix_redis_url(cls, v: str) -> str:
+        if not v or not isinstance(v, str):
+            return v
+        if not v.startswith(("redis://", "rediss://", "unix://")):
+            return f"redis://{v}"
+        return v
+
     # JWT Settings
     JWT_ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 15
