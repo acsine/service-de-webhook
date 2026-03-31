@@ -1,0 +1,28 @@
+{
+  "messages": {
+    "hello_world": "Bonjour le Monde",
+    "greeting": "Bonjour, {name}! Vous avez {age} ans!",
+    "user_not_found": "Utilisateur avec l'id '{user_id}' introuvable",
+    "user_already_exists": "Utilisateur avec l'id '{user_id}' existe déjà",
+    "user_created": "Utilisateur créé avec succès",
+    "user_deleted": "Utilisateur '{first_name} {last_name}' supprimé avec succès",
+    "age_negative": "L'âge ne peut pas être négatif",
+    "name_empty": "Le nom ne peut pas être vide",
+    "validation_error": "Erreur de validation",
+    "users_found": "{count} utilisateurs trouvés",
+    "no_users_found": "Aucun utilisateur trouvé correspondant aux critères"
+  },
+  "fields": {
+    "first_name": "Prénom",
+    "last_name": "Nom de famille",
+    "age": "Âge",
+    "birth_date": "Date de naissance",
+    "created_at": "Créé le",
+    "id": "ID"
+  },
+  "errors": {
+    "required_field": "Ce champ est requis",
+    "invalid_format": "Format invalide",
+    "out_of_range": "La valeur est hors de la plage acceptable"
+  }
+}

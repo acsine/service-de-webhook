@@ -1,0 +1,88 @@
+name: Python SonarQube Analysis
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+jobs:
+  sonar:
+    name: SonarQube Scan (Python)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.13'
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v3
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+      #    pip install httpx pytest pytest-cov sqlalchemy alembic psycopg2-binary dotenv fastapi uvicorn databases pytest-asyncio pydantic python-dotenv mangum python-jose[cryptography] jwt 
+
+    #  - name: Run tests with coverage
+     #   run: |
+      #    pytest --maxfail=1 --disable-warnings -q --cov=.
+      - name: Add SonarScanner to PATH
+        run: echo "$HOME/sonar-scanner-5.0.1.3006-linux/bin" >> $GITHUB_PATH
+
+      - name: Install SonarScanner cli 
+        run: |
+          curl -sSLo sonar-scanner.zip https://binaries.sonarsource.com/Distribution/sonar-scanner-cli/sonar-scanner-cli-5.0.1.3006-linux.zip
+          unzip sonar-scanner.zip -d $HOME
+          echo "$HOME/sonar-scanner-5.0.1.3006-linux/bin" >> $GITHUB_PATH
+          sonar-scanner --version
+
+      - name: Run SonarQube Scan
+        env:
+          SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+        run: |
+          sonar-scanner \
+            -Dsonar.projectKey=sygalin-base-python \
+            -Dsonar.sources=. \
+            -Dsonar.host.url=$SONAR_HOST_URL \
+            -Dsonar.login=$SONAR_TOKEN
+
+      - name: Check Quality Gate
+        run: |
+          echo "Waiting for Quality Gate..."
+          for i in {1..10}; do
+            sleep 10
+            QUALITY_GATE=$(curl -s -H "Authorization: Bearer $SONAR_TOKEN" "$SONAR_HOST_URL/api/qualitygates/project_status?projectKey=sygalin-base-python")
+            STATUS=$(echo "$QUALITY_GATE" | jq -r '.projectStatus.status')
+            echo "Attempt $i: Quality Gate status = $STATUS"
+            if [ "$STATUS" != "IN_PROGRESS" ]; then
+              break
+            fi                          
+          done
+
+          if [ "$STATUS" == "ERROR" ]; then
+            ISSUES=$(curl -s -H "Authorization: Bearer $SONAR_TOKEN" \
+              "$SONAR_HOST_URL/api/issues/search?componentKeys=sygalin-base-python&types=BUG,VULNERABILITY,CODE_SMELL&inNewCodePeriod=true&ps=500")
+
+            TOTAL=$(echo "$ISSUES" | jq -r '.total')
+            echo "Total new issues: $TOTAL"
+
+            # Boucle sur chaque issue avec fallback pour line
+            echo "$ISSUES" | jq -r '.issues[] |
+            "\(.type): \(.message) [\(.severity)]\nRule: \(.rule)\nFile: \(.component)\nLine: \(.line // .textRange.startLine // "N/A")\nMessage: \(.message // "N/A")\n---"'
+            exit 1
+          else
+            echo "Quality Gate passed"
+          fi
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+          SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}

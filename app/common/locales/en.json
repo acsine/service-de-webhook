@@ -1,0 +1,18 @@
+{
+  "messages": {
+    "describe_success" : "Hello {firstName} {lastName}! You are {age} years old. It's currently {hour} o'clock."
+  },
+  "fields": {
+    "first_name": "First Name",
+    "last_name": "Last Name",
+    "age": "Age",
+    "birth_date": "Birth Date",
+    "created_at": "Created At",
+    "id": "ID"
+  },
+  "errors": {
+    "required_field": "This field is required",
+    "invalid_format": "Invalid format",
+    "out_of_range": "Value is out of acceptable range"
+  }
+}

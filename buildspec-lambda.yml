@@ -1,0 +1,52 @@
+version: 0.2
+
+phases:
+  install:
+    runtime-versions:
+      python: 3.12
+    commands:
+      - echo Installing SAM CLI...
+      - curl https://d1vvhvl2y92vvt.cloudfront.net/awscli-exe-linux-x86_64.zip -o awscliv2.zip
+      - unzip -q awscliv2.zip
+ #     - ./aws/install
+      - aws --version
+   #   - pip install --user aws-sam-cli
+      - sam --version
+  build:
+    commands:
+      - echo Build phase...
+      - echo Creating packages layer with poetry...
+      - curl -sSL 'https://install.python-poetry.org' | python
+      - export PATH="/root/.local/bin:$PATH"
+      - poetry --version
+      - mkdir -p dependencies-layer/python
+      - cp pyproject.toml poetry.lock dependencies-layer/python
+      - cd dependencies-layer/python
+      - poetry export -f requirements.txt --without-hashes > requirements.txt
+      - pip install -r requirements.txt -t ./
+      # - poetry install --no-interaction --no-ansi --sync --without boto3
+      - ls -l
+      - echo Creating common dependencies layer...
+      - cd ../..
+      - mkdir -p common-layer/python/app
+      - touch common-layer/python/app/__init__.py
+      - mkdir -p common-layer/python/app/common/
+      - mkdir -p common-layer/python/app/config/
+      - cp -r app/common/* common-layer/python/app/common/
+      - cp -r app/config/* common-layer/python/app/config/
+      - chmod +x prepare-for-lambda.sh
+      - ./prepare-for-lambda.sh
+      - sam build
+      - echo Files states...
+      - ls -R common-layer/
+  post_build:
+    commands:
+      - echo Post-build phase...
+      - echo Packaging and deploying the project with SAM...
+      - ls
+      - echo ${PROJECT_REGION}
+      - echo ${PROJECT_STACK_NAME}
+      - echo ${PROJECT_BUCKET_NAME}
+      - aws sts get-caller-identity
+      - sam deploy --stack-name ${PROJECT_STACK_NAME} --s3-bucket ${PROJECT_BUCKET_NAME} --region ${PROJECT_REGION} --capabilities CAPABILITY_IAM
+

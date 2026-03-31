@@ -1,0 +1,9 @@
+# app/services/events/constants.py
+DEFAULT_RATE_LIMIT_PER_MIN = 500
+IDEMPOTENCY_TTL = 86400
+
+# Circuit Breaker & Retry
+CIRCUIT_BREAKER_THRESHOLD = 5
+CIRCUIT_BREAKER_TTL = 3600  # 1 hour
+BACKOFF_BASE = 1
+BACKOFF_MAX = 1800  # 30 minutes
