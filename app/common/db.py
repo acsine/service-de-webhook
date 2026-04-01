@@ -12,7 +12,7 @@ db_url = settings.DATABASE_URL or "postgresql+asyncpg://user:pass@localhost/db"
 engine = create_async_engine(
     db_url,
     poolclass=NullPool,
-    connect_args={"ssl": "require"} if "localhost" not in db_url else {}
+    connect_args={"ssl": True} if "localhost" not in db_url else {}
 )
 
 AsyncSessionLocal = sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)

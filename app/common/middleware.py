@@ -9,60 +9,105 @@ from app.common.redis import get_redis
 
 logger = structlog.get_logger()
 
-class SecurityHeadersMiddleware(BaseHTTPMiddleware):
-    async def dispatch(self, request: Request, call_next):
-        response = await call_next(request)
-        response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
-        response.headers["X-Content-Type-Options"] = "nosniff"
-        response.headers["X-Frame-Options"] = "DENY"
-        response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
-        return response
+class SecurityHeadersMiddleware:
+    def __init__(self, app):
+        self.app = app
 
-class StructlogMiddleware(BaseHTTPMiddleware):
-    async def dispatch(self, request: Request, call_next):
+    async def __call__(self, scope, receive, send):
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
+
+        async def send_wrapper(message):
+            if message["type"] == "http.response.start":
+                # Convert headers list to dict for easier manipulation
+                headers = dict(message.get("headers", []))
+                headers[b"strict-transport-security"] = b"max-age=31536000; includeSubDomains"
+                headers[b"x-content-type-options"] = b"nosniff"
+                headers[b"x-frame-options"] = b"DENY"
+                headers[b"referrer-policy"] = b"strict-origin-when-cross-origin"
+                # Update message headers
+                message["headers"] = list(headers.items())
+            await send(message)
+
+        await self.app(scope, receive, send_wrapper)
+
+class StructlogMiddleware:
+    def __init__(self, app):
+        self.app = app
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
+
         start_time = time.perf_counter()
         request_id = str(uuid.uuid4())
         structlog.contextvars.bind_contextvars(request_id=request_id)
         
-        response = await call_next(request)
-        
-        duration = int((time.perf_counter() - start_time) * 1000)
-        
-        # Masking logic simplified
-        path = request.url.path
-        method = request.method
-        status_code = response.status_code
-        
-        logger.info(
-            "request_finished",
-            method=method,
-            path=path,
-            status_code=status_code,
-            duration_ms=duration,
-            ip=request.client.host if request.client else "unknown"
-        )
-        return response
+        async def send_wrapper(message):
+            if message["type"] == "http.response.start":
+                duration = int((time.perf_counter() - start_time) * 1000)
+                status_code = message["status"]
+                path = scope.get("path", "")
+                method = scope.get("method", "")
+                ip = scope.get("client", ["unknown"])[0] if scope.get("client") else "unknown"
+                
+                logger.info(
+                    "request_finished",
+                    method=method,
+                    path=path,
+                    status_code=status_code,
+                    duration_ms=duration,
+                    ip=ip
+                )
+            await send(message)
 
-class GlobalRateLimitMiddleware(BaseHTTPMiddleware):
-    async def dispatch(self, request: Request, call_next):
-        if not request.url.path.startswith("/api/v1/auth/"):
-            return await call_next(request)
+        await self.app(scope, receive, send_wrapper)
+
+class GlobalRateLimitMiddleware:
+    def __init__(self, app):
+        self.app = app
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
+
+        path = scope.get("path", "")
+        if not path.startswith("/api/v1/auth/"):
+            await self.app(scope, receive, send)
+            return
             
-        if request.url.path == "/api/v1/auth/refresh":
-            return await call_next(request)
+        if path == "/api/v1/auth/refresh":
+            await self.app(scope, receive, send)
+            return
 
-        ip = request.client.host if request.client else "unknown"
+        ip = scope.get("client", ["unknown"])[0] if scope.get("client") else "unknown"
         key = f"rl:ip:{ip}"
         
         # In a real app, we'd use a shared redis pool
-        # Here we mock it or use a global one
         from app.common.redis import _redis as redis 
         if redis:
-            count = await redis.incr(key)
-            if count == 1:
-                await redis.expire(key, 60)
-            
-            if count > 100:
-                return Response(content="Rate limit exceeded", status_code=429)
+            try:
+                count = await redis.incr(key)
+                if count == 1:
+                    await redis.expire(key, 60)
                 
-        return await call_next(request)
+                if count > 100:
+                    response_start = {
+                        "type": "http.response.start",
+                        "status": 429,
+                        "headers": [[b"content-type", b"text/plain"]],
+                    }
+                    await send(response_start)
+                    await send({
+                        "type": "http.response.body",
+                        "body": b"Rate limit exceeded",
+                    })
+                    return
+            except Exception as e:
+                # Fallback on redis error to not block requests
+                logger.error("redis_rate_limit_error", error=str(e))
+                
+        await self.app(scope, receive, send)
